@@ -5,7 +5,6 @@ const STORAGE_KEYS = {
 
 const state = {
   token: localStorage.getItem(STORAGE_KEYS.token) || '',
-  profile: null,
   authStatus: null,
   createStatus: null,
   updateStatus: null,
@@ -52,18 +51,11 @@ function renderStatus(status) {
 }
 
 function renderAuthCard() {
-  const profile = state.profile
-    ? `<div class="list">
-        <div class="badge">Пользователь: <strong>${escapeHtml(state.profile.firstName)}</strong></div>
-        <div class="badge">Telegram ID: ${escapeHtml(state.profile.telegramId)}</div>
-      </div>`
-    : '<p class="helper">Введите токен и нажмите «Проверить доступ»</p>';
-
   return `
     <section class="card">
       <div class="card-header">
         <h2>Авторизация</h2>
-        <span class="helper">Bearer токен</span>
+        <span class="helper">Bearer токен сохраняется локально</span>
       </div>
       <form id="token-form" class="list">
         <div>
@@ -72,12 +64,9 @@ function renderAuthCard() {
         </div>
         <div class="actions">
           <button type="submit">Сохранить токен</button>
-          <button type="button" class="ghost" id="check-profile">Проверить доступ</button>
         </div>
       </form>
       ${renderStatus(state.authStatus)}
-      <div class="section-title">Текущий пользователь</div>
-      ${profile}
     </section>
   `;
 }
@@ -270,14 +259,6 @@ function bindAuthCard() {
     state.token = token;
     localStorage.setItem(STORAGE_KEYS.token, token);
     setStatus('authStatus', 'success', 'Токен сохранён локально.');
-    if (token) {
-      fetchProfile();
-    }
-  });
-
-  document.getElementById('check-profile').addEventListener('click', (event) => {
-    event.preventDefault();
-    fetchProfile();
   });
 }
 
@@ -506,22 +487,6 @@ function apiRequest(path, options = {}) {
   });
 }
 
-async function fetchProfile() {
-  if (!state.token) {
-    setStatus('authStatus', 'error', 'Введите токен для проверки.');
-    return;
-  }
-  try {
-    setStatus('authStatus', 'info', 'Проверяем токен...');
-    const profile = await apiRequest('/v1/auth/profile');
-    state.profile = profile;
-    setStatus('authStatus', 'success', 'Доступ подтверждён');
-  } catch (error) {
-    state.profile = null;
-    setStatus('authStatus', 'error', error.message);
-  }
-}
-
 async function reloadProduct(id) {
   try {
     const product = await apiRequest(`/v1/catalog/products/${id}`);
@@ -549,7 +514,6 @@ function bindGlobalActions() {
   document.getElementById('clear-cache').addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEYS.token);
     state.token = '';
-    state.profile = null;
     state.editProduct = null;
     state.newProductVariants = [createEmptyVariant()];
     resetStatuses();
@@ -559,7 +523,3 @@ function bindGlobalActions() {
 
 render();
 bindGlobalActions();
-
-if (state.token) {
-  fetchProfile();
-}
