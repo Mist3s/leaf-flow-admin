@@ -2,6 +2,8 @@ const API_BASE = 'https://app.zavarka39.ru/api';
 const STORAGE_KEYS = {
   token: 'leaf-flow-admin-token',
 };
+const IMAGE_MAX_SIDE = 1600;
+const IMAGE_QUALITY = 0.82;
 
 const state = {
   token: localStorage.getItem(STORAGE_KEYS.token) || '',
@@ -296,11 +298,11 @@ function bindCreateCard() {
       return;
     }
 
-    const formData = new FormData(form);
-    const payload = {
-      name: formData.get('name').trim(),
-      description: formData.get('description').trim(),
-      category: formData.get('category').trim(),
+      const formData = new FormData(form);
+      const payload = {
+        name: formData.get('name').trim(),
+        description: formData.get('description').trim(),
+        category: formData.get('category').trim(),
       tags: formData
         .get('tags')
         .split(',')
@@ -317,7 +319,7 @@ function bindCreateCard() {
 
     const file = formData.get('image');
     if (file && file.size) {
-      payload.image_base64 = await fileToBase64(file);
+      payload.image_base64 = await encodeImage(file);
     }
 
     try {
@@ -378,7 +380,7 @@ function bindEditCard() {
 
       const file = formData.get('image');
       if (file && file.size) {
-        payload.image_base64 = await fileToBase64(file);
+        payload.image_base64 = await encodeImage(file);
       }
 
       try {
@@ -480,7 +482,10 @@ function apiRequest(path, options = {}) {
       data = text;
     }
     if (!response.ok) {
-      const message = data?.message || data?.detail?.[0]?.msg || response.statusText;
+      const message =
+        response.status === 413
+          ? 'Файл изображения слишком большой. Попробуйте выбрать картинку меньшего размера.'
+          : data?.message || data?.detail?.[0]?.msg || response.statusText;
       throw new Error(message);
     }
     return data;
@@ -497,12 +502,48 @@ async function reloadProduct(id) {
   }
 }
 
-function fileToBase64(file) {
+async function encodeImage(file) {
+  const dataUrl = await readFileAsDataURL(file);
+  const optimized = await resizeIfNeeded(dataUrl);
+  return stripDataUrlPrefix(optimized);
+}
+
+function readFileAsDataURL(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+function stripDataUrlPrefix(dataUrl) {
+  if (typeof dataUrl !== 'string') return '';
+  const commaIndex = dataUrl.indexOf(',');
+  return commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+}
+
+function resizeIfNeeded(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const { width, height } = img;
+      const maxSide = Math.max(width, height);
+      if (!maxSide || maxSide <= IMAGE_MAX_SIDE) {
+        resolve(dataUrl);
+        return;
+      }
+
+      const scale = IMAGE_MAX_SIDE / maxSide;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', IMAGE_QUALITY));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
   });
 }
 
