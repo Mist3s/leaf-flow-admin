@@ -7,13 +7,18 @@ const IMAGE_QUALITY = 0.82;
 
 const state = {
   token: localStorage.getItem(STORAGE_KEYS.token) || '',
+  view: 'auth',
   authStatus: null,
   createStatus: null,
   updateStatus: null,
   loadStatus: null,
   variantStatus: null,
+  catalogStatus: null,
   newProductVariants: [createEmptyVariant()],
   editProduct: null,
+  categories: [],
+  products: [],
+  productsFilter: { category: '', search: '' },
 };
 
 const root = document.getElementById('app-root');
@@ -115,7 +120,8 @@ function renderCreateCard() {
           </div>
           <div>
             <label>Категория *</label>
-            <input name="category" placeholder="tea" required />
+            ${renderCategorySelect('create-category')}
+            <input name="categoryCustom" placeholder="Своя категория (опционально)" />
           </div>
         </div>
         <div>
@@ -161,7 +167,8 @@ function renderLoadedProduct() {
         </div>
         <div>
           <label>Категория</label>
-          <input name="category" value="${escapeHtml(product.category) || ''}" />
+          ${renderCategorySelect('edit-category', product.category)}
+          <input name="categoryCustom" placeholder="Своя категория" value="${escapeHtml(getCustomCategoryValue(product.category))}" />
         </div>
       </div>
       <div>
@@ -246,11 +253,139 @@ function renderEditCard() {
   `;
 }
 
+function renderCatalogCard() {
+  return `
+    <section class="card">
+      <div class="card-header">
+        <h2>Каталог</h2>
+        <span class="helper">Список товаров из публичного API</span>
+      </div>
+      <form id="catalog-filter" class="grid-two">
+        <div>
+          <label>Категория</label>
+          ${renderCategorySelect('catalog-category', state.productsFilter.category, true)}
+        </div>
+        <div>
+          <label>Поиск</label>
+          <input name="search" placeholder="Название или тег" value="${escapeHtml(state.productsFilter.search)}" />
+        </div>
+        <button type="submit" class="ghost">Обновить список</button>
+      </form>
+      ${renderStatus(state.catalogStatus)}
+      <div class="list">
+        ${state.products.length ? '' : '<p class="helper">Список пуст. Нажмите «Обновить список».</p>'}
+        ${state.products
+          .map(
+            (product) => `
+              <div class="catalog-item">
+                <div class="catalog-header">
+                  <div>
+                    <div class="catalog-title">${escapeHtml(product.name)}</div>
+                    <div class="catalog-meta">ID: ${escapeHtml(product.id)}</div>
+                  </div>
+                  <span class="badge">${escapeHtml(product.category)}</span>
+                </div>
+                <div class="chips">
+                  ${(product.tags || [])
+                    .map((tag) => `<span class="badge">${escapeHtml(tag)}</span>`)
+                    .join('') || '<span class="helper">Без тегов</span>'}
+                </div>
+                <div class="variant-list compact">
+                  ${(product.variants || [])
+                    .map(
+                      (variant) => `
+                        <div class="variant-chip">
+                          <strong>${escapeHtml(variant.weight)}</strong>
+                          <span>${escapeHtml(variant.price)}</span>
+                        </div>
+                      `
+                    )
+                    .join('') || '<span class="helper">Нет вариантов</span>'}
+                </div>
+              </div>
+            `
+          )
+          .join('')}
+      </div>
+    </section>
+  `;
+}
+
 function render() {
-  root.innerHTML = [renderAuthCard(), renderCreateCard(), renderEditCard()].join('');
-  bindAuthCard();
-  bindCreateCard();
-  bindEditCard();
+  root.innerHTML = `
+    <div class="tabs view-tabs">
+      ${renderNavTab('auth', 'Авторизация')}
+      ${renderNavTab('create', 'Создать товар')}
+      ${renderNavTab('edit', 'Редактировать')}
+      ${renderNavTab('catalog', 'Каталог')}
+    </div>
+    ${renderView()}
+  `;
+
+  bindNav();
+
+  if (state.view === 'auth') bindAuthCard();
+  if (state.view === 'create') bindCreateCard();
+  if (state.view === 'edit') bindEditCard();
+  if (state.view === 'catalog') bindCatalog();
+
+  prefetchCategories();
+}
+
+function renderNavTab(view, label) {
+  const active = state.view === view ? 'active' : '';
+  return `<button class="tab ${active}" data-view="${view}">${label}</button>`;
+}
+
+function renderView() {
+  switch (state.view) {
+    case 'create':
+      return renderCreateCard();
+    case 'edit':
+      return renderEditCard();
+    case 'catalog':
+      return renderCatalogCard();
+    case 'auth':
+    default:
+      return renderAuthCard();
+  }
+}
+
+function bindNav() {
+  document.querySelectorAll('[data-view]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.view = button.dataset.view;
+      render();
+    });
+  });
+}
+
+function renderCategorySelect(id, current = '', allowBlank = false) {
+  const hasCurrent = state.categories.some((c) => c.id === current);
+  const placeholderText = allowBlank ? 'Все категории' : state.categories.length ? 'Выберите категорию' : 'Загрузка категорий...';
+  const placeholder = `<option value="" ${current ? '' : 'selected'} ${allowBlank ? '' : 'disabled'}>${escapeHtml(placeholderText)}</option>`;
+
+  const options = state.categories
+    .map((category) => {
+      const selected = category.id === current ? 'selected' : '';
+      return `<option value="${escapeHtml(category.id)}" ${selected}>${escapeHtml(category.label)}</option>`;
+    })
+    .join('');
+
+  const extra = current && !hasCurrent ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>` : '';
+
+  return `
+    <select name="category" id="${id}" ${allowBlank ? '' : 'required'}>
+      ${placeholder}
+      ${options}
+      ${extra}
+    </select>
+  `;
+}
+
+function getCustomCategoryValue(categoryId) {
+  if (!categoryId) return '';
+  return state.categories.some((c) => c.id === categoryId) ? '' : categoryId;
 }
 
 function bindAuthCard() {
@@ -265,6 +400,10 @@ function bindAuthCard() {
 }
 
 function bindCreateCard() {
+  if (!state.categories.length) {
+    fetchCategories();
+  }
+
   const list = document.getElementById('create-variant-list');
   list.querySelectorAll('.variant-row input').forEach((input) => {
     input.addEventListener('input', () => {
@@ -298,11 +437,13 @@ function bindCreateCard() {
       return;
     }
 
-      const formData = new FormData(form);
-      const payload = {
-        name: formData.get('name').trim(),
-        description: formData.get('description').trim(),
-        category: formData.get('category').trim(),
+    const formData = new FormData(form);
+    const categoryCustom = formData.get('categoryCustom').trim();
+    const categorySelect = formData.get('category');
+    const payload = {
+      name: formData.get('name').trim(),
+      description: formData.get('description').trim(),
+      category: categoryCustom || categorySelect,
       tags: formData
         .get('tags')
         .split(',')
@@ -344,6 +485,7 @@ function bindEditCard() {
     if (!productId) return;
     try {
       setStatus('loadStatus', 'info', 'Загрузка товара...');
+      await fetchCategories();
       const product = await apiRequest(`/v1/catalog/products/${productId}`);
       state.editProduct = product;
       setStatus('loadStatus', 'success', 'Данные загружены');
@@ -374,7 +516,7 @@ function bindEditCard() {
       const payload = {
         name: formData.get('name').trim() || null,
         description: formData.get('description').trim() || null,
-        category: formData.get('category').trim() || null,
+        category: (formData.get('categoryCustom').trim() || formData.get('category').trim()) || null,
         tags,
       };
 
@@ -460,6 +602,29 @@ function bindEditCard() {
   }
 }
 
+function bindCatalog() {
+  if (!state.categories.length) {
+    fetchCategories();
+  }
+
+  const filterForm = document.getElementById('catalog-filter');
+  if (filterForm) {
+    filterForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(filterForm);
+      state.productsFilter = {
+        category: formData.get('category'),
+        search: formData.get('search').trim(),
+      };
+      await fetchProducts();
+    });
+  }
+
+  if (!state.products.length) {
+    fetchProducts();
+  }
+}
+
 function apiRequest(path, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
@@ -506,6 +671,48 @@ async function encodeImage(file) {
   const dataUrl = await readFileAsDataURL(file);
   const optimized = await resizeIfNeeded(dataUrl);
   return stripDataUrlPrefix(optimized);
+}
+
+function prefetchCategories() {
+  if (!state.categories.length) {
+    fetchCategories();
+  }
+}
+
+let categoriesLoading = false;
+async function fetchCategories() {
+  if (categoriesLoading) return;
+  categoriesLoading = true;
+  try {
+    const data = await apiRequest('/v1/catalog/categories');
+    state.categories = data.items || [];
+    render();
+  } catch (error) {
+    setStatus('catalogStatus', 'error', `Категории: ${error.message}`);
+  } finally {
+    categoriesLoading = false;
+  }
+}
+
+let productsLoading = false;
+async function fetchProducts() {
+  if (productsLoading) return;
+  productsLoading = true;
+  try {
+    setStatus('catalogStatus', 'info', 'Загружаем каталог...');
+    const params = new URLSearchParams();
+    if (state.productsFilter.category) params.set('category', state.productsFilter.category);
+    if (state.productsFilter.search) params.set('search', state.productsFilter.search);
+    params.set('limit', 20);
+    params.set('offset', 0);
+    const data = await apiRequest(`/v1/catalog/products?${params.toString()}`);
+    state.products = data.items || [];
+    setStatus('catalogStatus', 'success', `Найдено ${data.total ?? state.products.length} товаров`);
+  } catch (error) {
+    setStatus('catalogStatus', 'error', error.message);
+  } finally {
+    productsLoading = false;
+  }
 }
 
 function readFileAsDataURL(file) {
