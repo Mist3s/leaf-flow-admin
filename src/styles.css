@@ -329,9 +329,25 @@ textarea { resize: vertical; min-height: 96px; }
 
 .catalog-card .variant-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.catalog-card .variant-row.compact {
+  grid-template-columns: 1fr 1fr 1fr auto;
+  align-items: end;
+}
+
+@media (max-width: 720px) {
+  .catalog-card .variant-row.compact {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .catalog-card .variant-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
 }
 
 .catalog-card .variant-list input {
