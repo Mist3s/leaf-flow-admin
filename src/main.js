@@ -2,8 +2,8 @@ const API_BASE = 'https://app.zavarka39.ru/api';
 const STORAGE_KEYS = {
   token: 'leaf-flow-admin-token',
 };
-const IMAGE_MAX_SIDE = 1600;
-const IMAGE_QUALITY = 0.82;
+const IMAGE_MAX_SIDE = 1200;
+const IMAGE_QUALITY = 0.75;
 
 const savedToken = localStorage.getItem(STORAGE_KEYS.token) || '';
 
@@ -16,6 +16,7 @@ const state = {
   loadStatus: null,
   variantStatus: null,
   catalogStatus: null,
+  catalogVariantStatus: {},
   newProductVariants: [createEmptyVariant()],
   editProduct: null,
   categories: [],
@@ -41,6 +42,14 @@ function escapeHtml(value) {
 
 function setStatus(key, type, message) {
   state[key] = { type, message };
+  render();
+}
+
+function setCatalogVariantStatus(productId, type, message) {
+  state.catalogVariantStatus = {
+    ...state.catalogVariantStatus,
+    [productId]: { type, message },
+  };
   render();
 }
 
@@ -296,17 +305,9 @@ function renderCatalogCard() {
                     .join('') || '<span class="helper">Без тегов</span>'}
                 </div>
                 <div class="variant-list compact">
-                  ${(product.variants || [])
-                    .map(
-                      (variant) => `
-                        <div class="variant-chip">
-                          <strong>${escapeHtml(variant.weight)}</strong>
-                          <span>${escapeHtml(variant.price)}</span>
-                        </div>
-                      `
-                    )
-                    .join('') || '<span class="helper">Нет вариантов</span>'}
+                  ${renderCatalogVariants(product)}
                 </div>
+                ${renderCatalogVariantStatus(product.id)}
                 <div class="card-actions">
                   <button class="ghost" data-action="edit" data-id="${escapeHtml(product.id)}">Редактировать</button>
                 </div>
@@ -325,41 +326,24 @@ function render() {
   }
 
   root.innerHTML = `
-    ${state.token ? renderNavBar() : ''}
     ${renderView()}
   `;
 
-  if (state.token) bindNav();
   if (state.view === 'auth') bindAuthCard();
   if (state.view === 'create') bindCreateCard();
   if (state.view === 'edit') bindEditCard();
   if (state.view === 'catalog') bindCatalog();
+  bindBackToCatalog();
 
   prefetchCategories();
-}
-
-function renderNavBar() {
-  return `
-    <div class="nav-bar">
-      ${renderNavButton('catalog', 'Каталог')}
-      ${renderNavButton('create', 'Создать товар')}
-      ${renderNavButton('edit', 'Редактировать', !state.editProduct)}
-    </div>
-  `;
-}
-
-function renderNavButton(view, label, disabled = false) {
-  const active = state.view === view ? 'active' : '';
-  const disableAttr = disabled ? 'disabled' : '';
-  return `<button class="nav-btn ${active}" data-view="${view}" ${disableAttr}>${label}</button>`;
 }
 
 function renderView() {
   switch (state.view) {
     case 'create':
-      return renderCreateCard();
+      return `${renderBackBar()}${renderCreateCard()}`;
     case 'edit':
-      return renderEditCard();
+      return `${renderBackBar()}${renderEditCard()}`;
     case 'catalog':
       return renderCatalogCard();
     case 'auth':
@@ -368,13 +352,21 @@ function renderView() {
   }
 }
 
-function bindNav() {
-  document.querySelectorAll('[data-view]').forEach((button) => {
-    button.addEventListener('click', () => {
-      if (button.disabled) return;
-      state.view = button.dataset.view;
-      render();
-    });
+function renderBackBar() {
+  return `
+    <div class="back-bar">
+      <button id="back-to-catalog" class="ghost">← Назад к каталогу</button>
+    </div>
+  `;
+}
+
+function bindBackToCatalog() {
+  const back = document.getElementById('back-to-catalog');
+  if (!back) return;
+  back.addEventListener('click', async () => {
+    state.view = 'catalog';
+    render();
+    await fetchProducts();
   });
 }
 
@@ -395,6 +387,64 @@ function renderCategorySelect(id, current = '', allowBlank = false) {
       ${options}
     </select>
   `;
+}
+
+function renderCatalogVariants(product) {
+  const variants = product.variants || [];
+  const rows = variants
+    .map(
+      (variant) => `
+        <div class="variant-row compact" data-product-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variant.id)}">
+          <div>
+            <label>ID</label>
+            <input data-field="id" value="${escapeHtml(variant.id)}" readonly />
+          </div>
+          <div>
+            <label>Вес / объем</label>
+            <input data-field="weight" value="${escapeHtml(variant.weight)}" />
+          </div>
+          <div>
+            <label>Цена</label>
+            <input data-field="price" value="${escapeHtml(variant.price)}" />
+          </div>
+          <div class="variant-actions">
+            <button type="button" class="ghost" data-action="catalog-update-variant" data-product-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variant.id)}">Обновить</button>
+            <button type="button" class="ghost danger" data-action="catalog-delete-variant" data-product-id="${escapeHtml(product.id)}" data-variant-id="${escapeHtml(variant.id)}">Удалить</button>
+          </div>
+        </div>
+      `
+    )
+    .join('');
+
+  const addRow = `
+    <div class="variant-row compact add" data-product-id="${escapeHtml(product.id)}">
+      <div>
+        <label>Новая упаковка — ID</label>
+        <input data-field="id" placeholder="unique-id" />
+      </div>
+      <div>
+        <label>Вес / объем</label>
+        <input data-field="weight" placeholder="100g" />
+      </div>
+      <div>
+        <label>Цена</label>
+        <input data-field="price" placeholder="590" />
+      </div>
+      <div class="variant-actions">
+        <button type="button" data-action="catalog-add-variant" data-product-id="${escapeHtml(product.id)}">Добавить</button>
+      </div>
+    </div>
+  `;
+
+  const content = rows || '<span class="helper">Нет вариантов</span>';
+  return content + addRow;
+}
+
+function renderCatalogVariantStatus(productId) {
+  const status = state.catalogVariantStatus[productId];
+  if (!status) return '';
+  const cls = status.type === 'success' ? 'success' : status.type === 'error' ? 'error' : 'muted';
+  return `<div class="status ${cls}">${escapeHtml(status.message)}</div>`;
 }
 
 function bindAuthCard() {
@@ -645,6 +695,79 @@ function bindCatalog() {
       await goToEdit(productId);
     });
   });
+
+  const catalogGrid = document.querySelector('.catalog-grid');
+  if (catalogGrid) {
+    catalogGrid.addEventListener('click', async (event) => {
+      const action = event.target.dataset.action;
+      if (!action) return;
+      const productId = event.target.dataset.productId;
+      if (!productId) return;
+      if (!state.token) {
+        setCatalogVariantStatus(productId, 'error', 'Сначала сохраните токен администратора.');
+        return;
+      }
+
+      if (action === 'catalog-update-variant') {
+        const row = event.target.closest('.variant-row');
+        const inputs = row.querySelectorAll('input');
+        const payload = {};
+        inputs.forEach((input) => {
+          if (input.dataset.field !== 'id') {
+            payload[input.dataset.field] = input.value.trim();
+          }
+        });
+        setCatalogVariantStatus(productId, 'info', 'Обновляем упаковку...');
+        try {
+          await apiRequest(`/v1/admin/products/${productId}/variants/${event.target.dataset.variantId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          });
+          setCatalogVariantStatus(productId, 'success', 'Упаковка обновлена');
+          await fetchProducts();
+        } catch (error) {
+          setCatalogVariantStatus(productId, 'error', error.message);
+        }
+      }
+
+      if (action === 'catalog-delete-variant') {
+        setCatalogVariantStatus(productId, 'info', 'Удаляем упаковку...');
+        try {
+          await apiRequest(`/v1/admin/products/${productId}/variants/${event.target.dataset.variantId}`, {
+            method: 'DELETE',
+          });
+          setCatalogVariantStatus(productId, 'success', 'Упаковка удалена');
+          await fetchProducts();
+        } catch (error) {
+          setCatalogVariantStatus(productId, 'error', error.message);
+        }
+      }
+
+      if (action === 'catalog-add-variant') {
+        const row = event.target.closest('.variant-row');
+        const payload = {};
+        row.querySelectorAll('input').forEach((input) => {
+          payload[input.dataset.field] = input.value.trim();
+        });
+        if (!payload.id || !payload.weight || !payload.price) {
+          setCatalogVariantStatus(productId, 'error', 'Заполните ID, вес и цену.');
+          return;
+        }
+        setCatalogVariantStatus(productId, 'info', 'Добавляем упаковку...');
+        try {
+          await apiRequest(`/v1/admin/products/${productId}/variants`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+          row.querySelectorAll('input').forEach((input) => (input.value = ''));
+          setCatalogVariantStatus(productId, 'success', 'Упаковка добавлена');
+          await fetchProducts();
+        } catch (error) {
+          setCatalogVariantStatus(productId, 'error', error.message);
+        }
+      }
+    });
+  }
 
   const goCreate = document.getElementById('go-create');
   if (goCreate) {
