@@ -5,9 +5,11 @@ const STORAGE_KEYS = {
 const IMAGE_MAX_SIDE = 1600;
 const IMAGE_QUALITY = 0.82;
 
+const savedToken = localStorage.getItem(STORAGE_KEYS.token) || '';
+
 const state = {
-  token: localStorage.getItem(STORAGE_KEYS.token) || '',
-  view: 'auth',
+  token: savedToken,
+  view: savedToken ? 'catalog' : 'auth',
   authStatus: null,
   createStatus: null,
   updateStatus: null,
@@ -59,7 +61,7 @@ function renderStatus(status) {
 
 function renderAuthCard() {
   return `
-    <section class="card">
+    <section class="card stack">
       <div class="card-header">
         <h2>Авторизация</h2>
         <span class="helper">Bearer токен сохраняется локально</span>
@@ -107,7 +109,7 @@ function renderVariantRows(variants, editable, prefix) {
 
 function renderCreateCard() {
   return `
-    <section class="card">
+    <section class="card stack">
       <div class="card-header">
         <h2>Добавление товара</h2>
         <span class="helper">Один запрос с упаковками и изображением</span>
@@ -121,7 +123,6 @@ function renderCreateCard() {
           <div>
             <label>Категория *</label>
             ${renderCategorySelect('create-category')}
-            <input name="categoryCustom" placeholder="Своя категория (опционально)" />
           </div>
         </div>
         <div>
@@ -160,17 +161,16 @@ function renderLoadedProduct() {
 
   return `
     <form id="update-form" class="list">
-      <div class="grid-two">
-        <div>
-          <label>Название</label>
-          <input name="name" value="${escapeHtml(product.name) || ''}" />
-        </div>
-        <div>
-          <label>Категория</label>
+        <div class="grid-two">
+          <div>
+            <label>Название</label>
+            <input name="name" value="${escapeHtml(product.name) || ''}" />
+          </div>
+          <div>
+            <label>Категория</label>
           ${renderCategorySelect('edit-category', product.category)}
-          <input name="categoryCustom" placeholder="Своя категория" value="${escapeHtml(getCustomCategoryValue(product.category))}" />
+          </div>
         </div>
-      </div>
       <div>
         <label>Описание</label>
         <textarea name="description">${escapeHtml(product.description) || ''}</textarea>
@@ -233,7 +233,7 @@ function renderLoadedProduct() {
 
 function renderEditCard() {
   return `
-    <section class="card">
+    <section class="card stack">
       <div class="card-header">
         <h2>Редактирование товара</h2>
         <span class="helper">Поиск по ID и частичные обновления</span>
@@ -255,10 +255,15 @@ function renderEditCard() {
 
 function renderCatalogCard() {
   return `
-    <section class="card">
+    <section class="card stack">
       <div class="card-header">
-        <h2>Каталог</h2>
-        <span class="helper">Список товаров из публичного API</span>
+        <div>
+          <h2>Каталог</h2>
+          <span class="helper">Список товаров из публичного API</span>
+        </div>
+        <div class="header-actions">
+          <button id="go-create">Добавить товар</button>
+        </div>
       </div>
       <form id="catalog-filter" class="grid-two">
         <div>
@@ -272,12 +277,12 @@ function renderCatalogCard() {
         <button type="submit" class="ghost">Обновить список</button>
       </form>
       ${renderStatus(state.catalogStatus)}
-      <div class="list">
+      <div class="catalog-grid">
         ${state.products.length ? '' : '<p class="helper">Список пуст. Нажмите «Обновить список».</p>'}
         ${state.products
           .map(
             (product) => `
-              <div class="catalog-item">
+              <div class="catalog-card">
                 <div class="catalog-header">
                   <div>
                     <div class="catalog-title">${escapeHtml(product.name)}</div>
@@ -302,6 +307,9 @@ function renderCatalogCard() {
                     )
                     .join('') || '<span class="helper">Нет вариантов</span>'}
                 </div>
+                <div class="card-actions">
+                  <button class="ghost" data-action="edit" data-id="${escapeHtml(product.id)}">Редактировать</button>
+                </div>
               </div>
             `
           )
@@ -312,18 +320,16 @@ function renderCatalogCard() {
 }
 
 function render() {
+  if (!state.token && state.view !== 'auth') {
+    state.view = 'auth';
+  }
+
   root.innerHTML = `
-    <div class="tabs view-tabs">
-      ${renderNavTab('auth', 'Авторизация')}
-      ${renderNavTab('create', 'Создать товар')}
-      ${renderNavTab('edit', 'Редактировать')}
-      ${renderNavTab('catalog', 'Каталог')}
-    </div>
+    ${state.token ? renderNavBar() : ''}
     ${renderView()}
   `;
 
-  bindNav();
-
+  if (state.token) bindNav();
   if (state.view === 'auth') bindAuthCard();
   if (state.view === 'create') bindCreateCard();
   if (state.view === 'edit') bindEditCard();
@@ -332,9 +338,20 @@ function render() {
   prefetchCategories();
 }
 
-function renderNavTab(view, label) {
+function renderNavBar() {
+  return `
+    <div class="nav-bar">
+      ${renderNavButton('catalog', 'Каталог')}
+      ${renderNavButton('create', 'Создать товар')}
+      ${renderNavButton('edit', 'Редактировать', !state.editProduct)}
+    </div>
+  `;
+}
+
+function renderNavButton(view, label, disabled = false) {
   const active = state.view === view ? 'active' : '';
-  return `<button class="tab ${active}" data-view="${view}">${label}</button>`;
+  const disableAttr = disabled ? 'disabled' : '';
+  return `<button class="nav-btn ${active}" data-view="${view}" ${disableAttr}>${label}</button>`;
 }
 
 function renderView() {
@@ -354,6 +371,7 @@ function renderView() {
 function bindNav() {
   document.querySelectorAll('[data-view]').forEach((button) => {
     button.addEventListener('click', () => {
+      if (button.disabled) return;
       state.view = button.dataset.view;
       render();
     });
@@ -361,7 +379,6 @@ function bindNav() {
 }
 
 function renderCategorySelect(id, current = '', allowBlank = false) {
-  const hasCurrent = state.categories.some((c) => c.id === current);
   const placeholderText = allowBlank ? 'Все категории' : state.categories.length ? 'Выберите категорию' : 'Загрузка категорий...';
   const placeholder = `<option value="" ${current ? '' : 'selected'} ${allowBlank ? '' : 'disabled'}>${escapeHtml(placeholderText)}</option>`;
 
@@ -372,20 +389,12 @@ function renderCategorySelect(id, current = '', allowBlank = false) {
     })
     .join('');
 
-  const extra = current && !hasCurrent ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>` : '';
-
   return `
     <select name="category" id="${id}" ${allowBlank ? '' : 'required'}>
       ${placeholder}
       ${options}
-      ${extra}
     </select>
   `;
-}
-
-function getCustomCategoryValue(categoryId) {
-  if (!categoryId) return '';
-  return state.categories.some((c) => c.id === categoryId) ? '' : categoryId;
 }
 
 function bindAuthCard() {
@@ -396,6 +405,10 @@ function bindAuthCard() {
     state.token = token;
     localStorage.setItem(STORAGE_KEYS.token, token);
     setStatus('authStatus', 'success', 'Токен сохранён локально.');
+    state.view = 'catalog';
+    render();
+    fetchCategories();
+    fetchProducts();
   });
 }
 
@@ -438,12 +451,11 @@ function bindCreateCard() {
     }
 
     const formData = new FormData(form);
-    const categoryCustom = formData.get('categoryCustom').trim();
     const categorySelect = formData.get('category');
     const payload = {
       name: formData.get('name').trim(),
       description: formData.get('description').trim(),
-      category: categoryCustom || categorySelect,
+      category: categorySelect,
       tags: formData
         .get('tags')
         .split(',')
@@ -471,6 +483,9 @@ function bindCreateCard() {
       state.newProductVariants = [createEmptyVariant()];
       form.reset();
       setStatus('createStatus', 'success', `Товар создан: ${response?.id || 'успешно'}`);
+      state.view = 'catalog';
+      render();
+      fetchProducts();
     } catch (error) {
       setStatus('createStatus', 'error', error.message);
     }
@@ -516,7 +531,7 @@ function bindEditCard() {
       const payload = {
         name: formData.get('name').trim() || null,
         description: formData.get('description').trim() || null,
-        category: (formData.get('categoryCustom').trim() || formData.get('category').trim()) || null,
+        category: formData.get('category').trim() || null,
         tags,
       };
 
@@ -622,6 +637,34 @@ function bindCatalog() {
 
   if (!state.products.length) {
     fetchProducts();
+  }
+
+  document.querySelectorAll('[data-action="edit"]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const productId = button.dataset.id;
+      await goToEdit(productId);
+    });
+  });
+
+  const goCreate = document.getElementById('go-create');
+  if (goCreate) {
+    goCreate.addEventListener('click', () => {
+      state.view = 'create';
+      render();
+    });
+  }
+}
+
+async function goToEdit(productId) {
+  try {
+    setStatus('loadStatus', 'info', 'Загрузка товара...');
+    const product = await apiRequest(`/v1/catalog/products/${productId}`);
+    state.editProduct = product;
+    state.view = 'edit';
+    setStatus('loadStatus', 'success', 'Данные загружены');
+  } catch (error) {
+    setStatus('catalogStatus', 'error', error.message);
+    render();
   }
 }
 
