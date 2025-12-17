@@ -126,13 +126,17 @@ function renderCreateCard() {
       <form id="create-form" class="list" autocomplete="off">
         <div class="grid-two">
           <div>
+            <label>ID товара *</label>
+            <input name="id" placeholder="unique-product-id" required />
+          </div>
+          <div>
             <label>Название *</label>
             <input name="name" placeholder="Матча классическая" required />
           </div>
-          <div>
-            <label>Категория *</label>
-            ${renderCategorySelect('create-category')}
-          </div>
+        </div>
+        <div>
+          <label>Категория *</label>
+          ${renderCategorySelect('create-category')}
         </div>
         <div>
           <label>Описание *</label>
@@ -503,6 +507,7 @@ function bindCreateCard() {
     const formData = new FormData(form);
     const categorySelect = formData.get('category');
     const payload = {
+      id: formData.get('id').trim(),
       name: formData.get('name').trim(),
       description: formData.get('description').trim(),
       category: categorySelect,

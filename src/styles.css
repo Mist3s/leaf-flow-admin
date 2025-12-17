@@ -164,8 +164,13 @@ input, textarea, select {
   font-size: 14px;
 }
 
-select, option {
-  background: #111a2f;
+select {
+  background: #0c1326;
+  color: var(--text);
+}
+
+option {
+  background: #0c1326;
   color: var(--text);
 }
 
