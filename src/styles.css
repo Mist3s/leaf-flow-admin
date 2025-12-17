@@ -285,6 +285,32 @@ textarea { resize: vertical; min-height: 96px; }
   min-height: 100%;
 }
 
+.catalog-image {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.catalog-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.catalog-image.placeholder {
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  border-style: dashed;
+}
+
 .catalog-card .variant-row {
   margin-bottom: 6px;
 }

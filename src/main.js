@@ -296,6 +296,7 @@ function renderCatalogCard() {
           .map(
             (product) => `
               <div class="catalog-card">
+                ${renderCatalogImage(product)}
                 <div class="catalog-header">
                   <div>
                     <div class="catalog-title">${escapeHtml(product.name)}</div>
@@ -321,6 +322,22 @@ function renderCatalogCard() {
           .join('')}
       </div>
     </section>
+  `;
+}
+
+function renderCatalogImage(product) {
+  const safeName = escapeHtml(product.name);
+  if (product.image) {
+    return `
+      <div class="catalog-image">
+        <img src="${escapeHtml(product.image)}" alt="${safeName}" loading="lazy" />
+      </div>
+    `;
+  }
+  return `
+    <div class="catalog-image placeholder">
+      <span>Нет изображения</span>
+    </div>
   `;
 }
 
