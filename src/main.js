@@ -155,7 +155,7 @@ function renderCreateCard() {
           <div class="variant-list" id="create-variant-list">
             ${renderVariantRows(state.newProductVariants, true, 'create')}
           </div>
-          <button type="button" id="add-variant" class="ghost">Добавить упаковку</button>
+          <button type="button" id="add-variant" class="ghost add-variant-btn">Добавить упаковку</button>
         </div>
         <button type="submit">Создать товар</button>
       </form>
