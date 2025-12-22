@@ -341,7 +341,7 @@ function renderCatalogImage(product) {
   if (product.image) {
     return `
       <div class="catalog-image">
-        <img src="${escapeHtml(product.image)}" alt="${safeName}" loading="lazy" />
+        <img src="https://app.zavarka39.ru/${escapeHtml(product.image)}" alt="${safeName}" loading="lazy" />
       </div>
     `;
   }
