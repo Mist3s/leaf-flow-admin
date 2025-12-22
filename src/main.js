@@ -17,17 +17,25 @@ const state = {
   variantStatus: null,
   catalogStatus: null,
   catalogVariantStatus: {},
+  newProductForm: createEmptyProductForm(),
   newProductVariants: [createEmptyVariant()],
   editProduct: null,
   categories: [],
   products: [],
   productsFilter: { category: '', search: '' },
+  catalogPage: 1,
+  catalogPageSize: 8,
+  totalProducts: 0,
 };
 
 const root = document.getElementById('app-root');
 
 function createEmptyVariant() {
   return { id: '', weight: '', price: '' };
+}
+
+function createEmptyProductForm() {
+  return { id: '', name: '', description: '', category: '', tags: '' };
 }
 
 function escapeHtml(value) {
@@ -127,24 +135,26 @@ function renderCreateCard() {
         <div class="grid-two">
           <div>
             <label>ID товара *</label>
-            <input name="id" placeholder="unique-product-id" required />
+            <input name="id" placeholder="unique-product-id" value="${escapeHtml(state.newProductForm.id)}" required />
           </div>
           <div>
             <label>Название *</label>
-            <input name="name" placeholder="Матча классическая" required />
+            <input name="name" placeholder="Матча классическая" value="${escapeHtml(state.newProductForm.name)}" required />
           </div>
         </div>
         <div>
           <label>Категория *</label>
-          ${renderCategorySelect('create-category')}
+          ${renderCategorySelect('create-category', state.newProductForm.category)}
         </div>
         <div>
           <label>Описание *</label>
-          <textarea name="description" placeholder="Короткое описание продукта" required></textarea>
+          <textarea name="description" placeholder="Короткое описание продукта" required>${escapeHtml(
+            state.newProductForm.description,
+          )}</textarea>
         </div>
         <div>
           <label>Теги (через запятую)</label>
-          <input name="tags" placeholder="matcha,organic,green" />
+          <input name="tags" placeholder="matcha,organic,green" value="${escapeHtml(state.newProductForm.tags)}" />
         </div>
         <div>
           <label>Изображение (jpg/png)</label>
@@ -321,6 +331,7 @@ function renderCatalogCard() {
           )
           .join('')}
       </div>
+      ${renderPagination()}
     </section>
   `;
 }
@@ -468,6 +479,26 @@ function renderCatalogVariantStatus(productId) {
   return `<div class="status ${cls}">${escapeHtml(status.message)}</div>`;
 }
 
+function renderPagination() {
+  const totalItems = state.totalProducts || state.products.length;
+  if (!totalItems) return '';
+  const totalPages = getTotalPages();
+  if (totalPages <= 1) return '';
+  const start = (state.catalogPage - 1) * state.catalogPageSize + 1;
+  const end = Math.min(state.catalogPage * state.catalogPageSize, totalItems);
+
+  return `
+    <div class="pagination">
+      <div class="pagination-info">${start}–${end} из ${totalItems}</div>
+      <div class="pagination-actions">
+        <button type="button" class="ghost" data-action="prev-page" ${state.catalogPage === 1 ? 'disabled' : ''}>Назад</button>
+        <span class="pagination-page">Стр. ${state.catalogPage} / ${totalPages}</span>
+        <button type="button" class="ghost" data-action="next-page" ${state.catalogPage >= totalPages ? 'disabled' : ''}>Вперёд</button>
+      </div>
+    </div>
+  `;
+}
+
 function bindAuthCard() {
   const form = document.getElementById('token-form');
   form.addEventListener('submit', (event) => {
@@ -487,6 +518,32 @@ function bindCreateCard() {
   if (!state.categories.length) {
     fetchCategories();
   }
+
+  const createForm = document.getElementById('create-form');
+
+  const syncDraft = (field, value) => {
+    state.newProductForm = {
+      ...state.newProductForm,
+      [field]: value,
+    };
+  };
+
+  const fieldListeners = [
+    { name: 'id', type: 'input' },
+    { name: 'name', type: 'input' },
+    { name: 'description', type: 'input' },
+    { name: 'tags', type: 'input' },
+    { name: 'category', type: 'change' },
+  ];
+
+  fieldListeners.forEach(({ name, type }) => {
+    const input = createForm.querySelector(`[name="${name}"]`);
+    if (input) {
+      input.addEventListener(type, (event) => {
+        syncDraft(name, event.target.value);
+      });
+    }
+  });
 
   const list = document.getElementById('create-variant-list');
   list.querySelectorAll('.variant-row input').forEach((input) => {
@@ -522,24 +579,55 @@ function bindCreateCard() {
     }
 
     const formData = new FormData(form);
-    const categorySelect = formData.get('category');
-    const payload = {
-      id: formData.get('id').trim(),
-      name: formData.get('name').trim(),
-      description: formData.get('description').trim(),
+    const id = formData.get('id').trim();
+    const name = formData.get('name').trim();
+    const description = formData.get('description').trim();
+    const categorySelect = formData.get('category').trim();
+    const tagString = formData.get('tags').trim();
+
+    state.newProductForm = {
+      id,
+      name,
+      description,
       category: categorySelect,
-      tags: formData
-        .get('tags')
+      tags: tagString,
+    };
+
+    if (!id || !name || !description || !categorySelect) {
+      setStatus('createStatus', 'error', 'Заполните все обязательные поля товара.');
+      return;
+    }
+
+    if (!tagString) {
+      setStatus('createStatus', 'error', 'Укажите теги через запятую.');
+      return;
+    }
+
+    const variants = state.newProductVariants
+      .map((variant) => ({
+        id: variant.id.trim(),
+        weight: variant.weight.trim(),
+        price: variant.price.trim(),
+      }))
+      .filter((variant) => variant.id || variant.weight || variant.price);
+
+    const hasInvalidVariants = variants.some((variant) => !variant.id || !variant.weight || !variant.price);
+
+    if (!variants.length || hasInvalidVariants) {
+      setStatus('createStatus', 'error', 'Заполните все поля каждой упаковки и добавьте хотя бы одну.');
+      return;
+    }
+
+    const payload = {
+      id,
+      name,
+      description,
+      category: categorySelect,
+      tags: tagString
         .split(',')
         .map((tag) => tag.trim())
         .filter(Boolean),
-      variants: state.newProductVariants
-        .map((variant) => ({
-          id: variant.id.trim(),
-          weight: variant.weight.trim(),
-          price: variant.price.trim(),
-        }))
-        .filter((variant) => variant.id && variant.weight && variant.price),
+      variants,
     };
 
     const file = formData.get('image');
@@ -553,8 +641,10 @@ function bindCreateCard() {
         body: JSON.stringify(payload),
       });
       state.newProductVariants = [createEmptyVariant()];
+      state.newProductForm = createEmptyProductForm();
       form.reset();
       setStatus('createStatus', 'success', `Товар создан: ${response?.id || 'успешно'}`);
+      state.catalogPage = 1;
       state.view = 'catalog';
       render();
       fetchProducts();
@@ -593,17 +683,24 @@ function bindEditCard() {
       }
 
       const formData = new FormData(updateForm);
+      const name = formData.get('name').trim();
+      const description = formData.get('description').trim();
+      const category = formData.get('category').trim();
       const tagString = formData.get('tags').trim();
+
+      if (!name || !description || !category || !tagString) {
+        setStatus('updateStatus', 'error', 'Заполните все поля товара перед сохранением.');
+        return;
+      }
+
       const tags = tagString
-        ? tagString
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-        : null;
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
       const payload = {
-        name: formData.get('name').trim() || null,
-        description: formData.get('description').trim() || null,
-        category: formData.get('category').trim() || null,
+        name,
+        description,
+        category,
         tags,
       };
 
@@ -634,10 +731,14 @@ function bindEditCard() {
         const weight = row.querySelector('input[data-field="weight"]').value.trim();
         const price = row.querySelector('input[data-field="price"]').value.trim();
         const variant = state.editProduct.variants[idx];
+        if (!weight || !price) {
+          setStatus('variantStatus', 'error', 'Укажите вес и цену перед обновлением.');
+          return;
+        }
         try {
           await apiRequest(`/v1/admin/products/${state.editProduct.id}/variants/${variant.id}`, {
             method: 'PATCH',
-            body: JSON.stringify({ weight: weight || null, price: price || null }),
+            body: JSON.stringify({ weight, price }),
           });
           setStatus('variantStatus', 'success', 'Упаковка обновлена');
           await reloadProduct(state.editProduct.id);
@@ -670,13 +771,22 @@ function bindEditCard() {
     addVariantForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const formData = new FormData(addVariantForm);
+      const id = formData.get('id').trim();
+      const weight = formData.get('weight').trim();
+      const price = formData.get('price').trim();
+
+      if (!id || !weight || !price) {
+        setStatus('variantStatus', 'error', 'Заполните все поля новой упаковки.');
+        return;
+      }
+
       try {
         await apiRequest(`/v1/admin/products/${state.editProduct.id}/variants`, {
           method: 'POST',
           body: JSON.stringify({
-            id: formData.get('id').trim(),
-            weight: formData.get('weight').trim(),
-            price: formData.get('price').trim(),
+            id,
+            weight,
+            price,
           }),
         });
         setStatus('variantStatus', 'success', 'Новая упаковка добавлена');
@@ -703,6 +813,7 @@ function bindCatalog() {
         category: formData.get('category'),
         search: formData.get('search').trim(),
       };
+      state.catalogPage = 1;
       await fetchProducts();
     });
   }
@@ -787,6 +898,22 @@ function bindCatalog() {
         } catch (error) {
           setCatalogVariantStatus(productId, 'error', error.message);
         }
+      }
+    });
+  }
+
+  const pagination = document.querySelector('.pagination');
+  if (pagination) {
+    pagination.addEventListener('click', async (event) => {
+      const action = event.target.dataset.action;
+      if (!action) return;
+      if (action === 'prev-page' && state.catalogPage > 1) {
+        state.catalogPage -= 1;
+        await fetchProducts();
+      }
+      if (action === 'next-page' && state.catalogPage < getTotalPages()) {
+        state.catalogPage += 1;
+        await fetchProducts();
       }
     });
   }
@@ -891,16 +1018,29 @@ async function fetchProducts() {
     const params = new URLSearchParams();
     if (state.productsFilter.category) params.set('category', state.productsFilter.category);
     if (state.productsFilter.search) params.set('search', state.productsFilter.search);
-    params.set('limit', 20);
-    params.set('offset', 0);
+    params.set('limit', state.catalogPageSize);
+    params.set('offset', (state.catalogPage - 1) * state.catalogPageSize);
     const data = await apiRequest(`/v1/catalog/products?${params.toString()}`);
     state.products = data.items || [];
-    setStatus('catalogStatus', 'success', `Найдено ${data.total ?? state.products.length} товаров`);
+    state.totalProducts = typeof data.total === 'number' ? data.total : state.products.length;
+    const totalPages = getTotalPages();
+    if (state.catalogPage > totalPages && totalPages > 0) {
+      productsLoading = false;
+      state.catalogPage = totalPages;
+      await fetchProducts();
+      return;
+    }
+    setStatus('catalogStatus', 'success', `Найдено ${state.totalProducts} товаров`);
   } catch (error) {
     setStatus('catalogStatus', 'error', error.message);
   } finally {
     productsLoading = false;
   }
+}
+
+function getTotalPages() {
+  const totalItems = state.totalProducts || state.products.length;
+  return Math.max(1, Math.ceil(totalItems / state.catalogPageSize));
 }
 
 function readFileAsDataURL(file) {
